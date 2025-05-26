@@ -103,71 +103,8 @@ func (g *GeminiClient) SummarizeCommitsWithPrompt(commits []git.CommitInfo, prom
 	return result.String(), nil
 }
 
-// buildCommitSummaryPrompt 构建用于总结提交的提示词
-func buildCommitSummaryPrompt(commits []git.CommitInfo, fromDate, toDate time.Time) string {
-	var sb strings.Builder
-
-	// 确定时间范围类型
-	var periodType string
-	daysDiff := toDate.Sub(fromDate).Hours() / 24
-
-	switch {
-	case daysDiff <= 1:
-		periodType = "今日"
-	case daysDiff <= 7:
-		periodType = "本周"
-	case daysDiff <= 31:
-		periodType = "本月"
-	case daysDiff <= 366:
-		periodType = "本年"
-	default:
-		periodType = "此期间"
-	}
-
-	sb.WriteString(fmt.Sprintf("请根据以下Git提交记录，生成一份%s工作总结。总结应该包括：\n", periodType))
-	sb.WriteString("1. 完成的主要工作内容\n")
-	sb.WriteString("2. 按功能或模块分类的工作内容\n")
-	sb.WriteString("3. 工作中的亮点或重要进展\n\n")
-	sb.WriteString(fmt.Sprintf("时间范围：%s 至 %s\n\n", fromDate.Format("2006-01-02"), toDate.Format("2006-01-02")))
-	sb.WriteString("提交记录如下：\n\n")
-
-	// 添加提交记录
-	for i, commit := range commits {
-		sb.WriteString(fmt.Sprintf("提交 %d:\n", i+1))
-		sb.WriteString(fmt.Sprintf("- 哈希值: %s\n", commit.Hash[:8]))
-		sb.WriteString(fmt.Sprintf("- 作者: %s\n", commit.Author))
-		sb.WriteString(fmt.Sprintf("- 日期: %s\n", commit.Date.Format("2006-01-02 15:04:05")))
-
-		// 添加分支信息
-		if len(commit.Branches) > 0 {
-			sb.WriteString(fmt.Sprintf("- 分支: %s\n", strings.Join(commit.Branches, ", ")))
-		}
-
-		sb.WriteString(fmt.Sprintf("- 消息: %s\n", commit.Message))
-		if len(commit.ChangedFiles) > 0 {
-			sb.WriteString("- 变更文件:\n")
-			// 最多显示10个文件
-			maxFiles := 10
-			if len(commit.ChangedFiles) < maxFiles {
-				maxFiles = len(commit.ChangedFiles)
-			}
-			for j := 0; j < maxFiles; j++ {
-				sb.WriteString(fmt.Sprintf("  * %s\n", commit.ChangedFiles[j]))
-			}
-			if len(commit.ChangedFiles) > maxFiles {
-				sb.WriteString(fmt.Sprintf("  * ... 以及其他 %d 个文件\n", len(commit.ChangedFiles)-maxFiles))
-			}
-		}
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString("请用中文撰写总结，格式为Markdown，保持专业性和简洁性。根据提交内容的性质，适当调整总结的风格和内容。")
-
-	return sb.String()
-}
-
 // buildPromptWithTemplate 使用指定的提示词模板构建提示词
-func buildPromptWithTemplate(commits []git.CommitInfo, fromDate, toDate time.Time, promptType PromptType) string {
+func buildPromptWithTemplate(commits []git.CommitInfo, _ /*fromDate*/, _ /*toDate*/ time.Time, promptType PromptType) string {
 	// 获取提示词模板
 	template, err := loadPromptTemplate(promptType)
 	if err != nil {
@@ -305,8 +242,7 @@ func loadPromptTemplate(promptType PromptType) (string, error) {
 		filename = "basic.txt"
 	}
 
-	// 构建文件路径
-	// 首先尝试从当前目录的prompts子目录加载
+	// 尝试从多个可能的位置加载模板
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("获取当前目录失败: %w", err)
@@ -314,9 +250,9 @@ func loadPromptTemplate(promptType PromptType) (string, error) {
 
 	// 尝试从多个可能的位置加载模板
 	paths := []string{
-		fmt.Sprintf("%s/prompts/%s", cwd, filename),                   // 当前目录下的prompts目录
-		fmt.Sprintf("%s/../prompts/%s", cwd, filename),                // 上级目录下的prompts目录
-		fmt.Sprintf("%s/../../prompts/%s", cwd, filename),             // 上上级目录下的prompts目录
+		fmt.Sprintf("%s/prompts/%s", cwd, filename),                                 // 当前目录下的prompts目录
+		fmt.Sprintf("%s/../prompts/%s", cwd, filename),                              // 上级目录下的prompts目录
+		fmt.Sprintf("%s/../../prompts/%s", cwd, filename),                           // 上上级目录下的prompts目录
 		fmt.Sprintf("/Users/cola/code/kway-teow/git-work-log/prompts/%s", filename), // 项目根目录
 	}
 

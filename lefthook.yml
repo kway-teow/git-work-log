@@ -1,0 +1,79 @@
+# git-work-log Lefthook配置
+# 详细文档: https://lefthook.dev/configuration/
+
+# 提交前钩子
+pre-commit:
+  parallel: true
+  commands:
+    # 格式化Go代码
+    go-fmt:
+      glob: "*.go"
+      run: |
+        # 对所有暂存的Go文件运行go fmt
+        for file in {staged_files}; do
+          go fmt $file
+        done
+    
+    # 运行Go静态代码分析
+    go-vet:
+      glob: "*.go"
+      run: |
+        # 对整个项目运行go vet
+        go vet ./...
+        # 如果有错误，返回非零状态码
+        if [ $? -ne 0 ]; then
+          exit 1
+        fi
+      
+    # 运行golangci-lint代码检查·
+    golangci-lint:
+      glob: "*.go"
+      run: |
+        # 对整个项目运行golangci-lint，而不是针对单个文件
+        golangci-lint run --config=.golangci.yml ./...
+        # 如果有错误，返回非零状态码
+        if [ $? -ne 0 ]; then
+          exit 1
+        fi
+
+# 推送前钩子
+pre-push:
+  commands:
+    # 运行所有测试
+    go-test:
+      run: go test -v ./...
+      
+    # 生成测试覆盖率报告
+    test-coverage:
+      run: |
+        go test -coverprofile=coverage.out ./...
+        go tool cover -func=coverage.out
+        echo "详细覆盖率报告可通过运行 'go tool cover -html=coverage.out' 查看"
+
+# 提交消息钩子
+commit-msg:
+  commands:
+    # 检查提交消息格式
+    validate-commit-message:
+      run: |
+        MSG_FILE=$1
+        if [ ! -f "$MSG_FILE" ]; then
+          echo "错误: 无法找到提交消息文件"
+          exit 1
+        fi
+        
+        COMMIT_MSG=$(cat "$MSG_FILE")
+        TYPES="feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert|wip"
+        
+        # 检查提交消息是否符合格式要求 (支持表情符号)
+        if ! echo "$COMMIT_MSG" | grep -qE "^($TYPES)(\(.+\))?(!)?(: |:\s*).+"; then
+          echo "错误: 提交消息不符合约定式提交规范"
+          echo "格式应为: <类型>(可选作用域)(可选!): <描述>"
+          echo "类型必须是以下之一: $TYPES"
+          echo "描述可以包含表情符号和特殊字符"
+          echo "示例:"
+          echo "  feat(report): 添加周报生成功能"
+          echo "  feat: 🎸 初始化项目"
+          echo "  fix(parser)!: 修复关键错误"
+          exit 1
+        fi

@@ -1,0 +1,45 @@
+# 编译生成的二进制文件和可执行文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/git-work-log
+
+# 测试二进制文件和覆盖率报告
+*.test
+*.out
+coverage.out
+coverage.html
+
+# 依赖目录
+vendor/
+
+# 输出目录
+dist/
+bin/
+
+# IDE和编辑器文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 环境变量文件
+.env
+.env.local
+
+# GoReleaser临时文件
+/dist/
+
+# 其他临时文件
+tmp/
+temp/

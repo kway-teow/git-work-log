@@ -21,16 +21,16 @@ var (
 
 var (
 	// 命令行参数
-	fromDate    string
-	toDate      string
+	fromDate     string
+	toDate       string
 	outputFormat string
-	outputFile  string
-	repoPath    string // Git仓库路径
-	modelName   string // Gemini模型名称
-	authorName  string // Git作者名称
-	timeRange   string // 时间范围类型：day(天)、week(周)、month(月)、year(年)
-	customDate  string // 指定具体日期 (YYYY-MM-DD 格式)
-	promptType  string // 提示词类型：basic(基础)、detailed(详细)、targeted(针对性)
+	outputFile   string
+	repoPath     string // Git仓库路径
+	modelName    string // Gemini模型名称
+	authorName   string // Git作者名称
+	timeRange    string // 时间范围类型：day(天)、week(周)、month(月)、year(年)
+	customDate   string // 指定具体日期 (YYYY-MM-DD 格式)
+	promptType   string // 提示词类型：basic(基础)、detailed(详细)、targeted(针对性)
 )
 
 // rootCmd 表示根命令
@@ -43,7 +43,7 @@ var rootCmd = &cobra.Command{
 它使用Google Gemini AI对提交记录进行智能总结，生成格式化的报告。
 支持多种时间范围：天(day)、周(week)、月(month)、年(year)或自定义日期。
 默认生成本周的报告。`,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		// 执行生成报告的操作
 		generateReport()
 	},
@@ -54,7 +54,7 @@ var rootCmd = &cobra.Command{
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "显示版本信息",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Printf("git-work-log 版本: %s\n", version)
 		fmt.Printf("提交哈希: %s\n", commit)
 		fmt.Printf("构建日期: %s\n", date)
@@ -90,7 +90,7 @@ func main() {
 func calculateTimeRange(rangeType string) (time.Time, time.Time) {
 	now := time.Now()
 	var from, to time.Time
-	
+
 	switch rangeType {
 	case "day":
 		// 今天
@@ -123,7 +123,7 @@ func calculateTimeRange(rangeType string) (time.Time, time.Time) {
 		from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
 		to = from.AddDate(0, 0, 7)
 	}
-	
+
 	return from, to
 }
 
@@ -147,7 +147,8 @@ func generateReport() {
 	var from, to time.Time
 	var err1, err2 error
 
-	if fromDate != "" && toDate != "" {
+	switch {
+	case fromDate != "" && toDate != "":
 		// 使用自定义时间范围（从某天到某天）
 		fmt.Println("使用自定义时间范围（从某天到某天）")
 		// 解析指定的日期范围
@@ -159,7 +160,7 @@ func generateReport() {
 		}
 		// 调整结束日期为当天结束
 		to = to.Add(24*time.Hour - time.Second)
-	} else if customDate != "" {
+	case customDate != "":
 		// 使用指定日期
 		fmt.Println("使用指定日期")
 		// 解析指定的日期
@@ -171,7 +172,7 @@ func generateReport() {
 		// 设置为指定日期的0点到次日0点
 		from = time.Date(specificDate.Year(), specificDate.Month(), specificDate.Day(), 0, 0, 0, 0, specificDate.Location())
 		to = from.AddDate(0, 0, 1)
-	} else {
+	default:
 		// 使用预定义的时间范围
 		fmt.Printf("使用预定义时间范围: %s\n", timeRange)
 		from, to = calculateTimeRange(timeRange)
@@ -179,14 +180,15 @@ func generateReport() {
 
 	// 创建Git选项
 	gitOpts := git.NewGitOptions(repoPath)
-	
+
 	// 如果命令行指定了作者名称，覆盖自动检测的用户名
-	if authorName != "" {
+	switch {
+	case authorName != "":
 		gitOpts.Author = authorName
 		fmt.Printf("使用指定作者: %s\n", authorName)
-	} else if gitOpts.Author != "" {
+	case gitOpts.Author != "":
 		fmt.Printf("使用当前 Git 用户: %s\n", gitOpts.Author)
-	} else {
+	default:
 		fmt.Println("未指定作者，将获取所有提交")
 	}
 
@@ -194,25 +196,25 @@ func generateReport() {
 	commits, err := git.GetCommitsBetween(from, to, gitOpts)
 	if err != nil {
 		fmt.Printf("错误: 获取Git提交记录失败: %v\n", err)
-		os.Exit(1)
+		return
 	}
 
 	if len(commits) == 0 {
 		fmt.Printf("指定时间范围 %s 到 %s 没有找到提交记录\n", from.Format("2006-01-02"), to.Format("2006-01-02"))
-		os.Exit(0)
+		return
 	}
 
 	fmt.Printf("找到 %d 条提交记录，正在生成报告...\n", len(commits))
 
 	// 使用AI生成报告
 	fmt.Println("使用AI生成摘要...")
-	
+
 	// 重用之前创建的客户端变量
 	if geminiClient == nil {
 		geminiClient, err = ai.NewGeminiClientWithModel(modelName)
 		if err != nil {
 			fmt.Printf("错误: 创建Gemini客户端失败: %v\n", err)
-			os.Exit(1)
+			return
 		}
 	}
 	defer geminiClient.Close()
@@ -238,7 +240,7 @@ func generateReport() {
 	reportSummary, err := geminiClient.SummarizeCommitsWithPrompt(commits, aiPromptType)
 	if err != nil {
 		fmt.Printf("错误: 生成报告摘要失败: %v\n", err)
-		os.Exit(1)
+		return
 	}
 
 	// 决定输出目标
@@ -247,7 +249,7 @@ func generateReport() {
 		file, err := os.Create(outputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "创建输出文件失败: %v\n", err)
-			os.Exit(1)
+			return
 		}
 		defer file.Close()
 		output = file
@@ -261,27 +263,31 @@ func generateReport() {
 	err = reportGenerator.GenerateReport(reportSummary, commits, from, to)
 	if err != nil {
 		fmt.Printf("错误: 输出报告失败: %v\n", err)
-		os.Exit(1)
+		return
 	}
 
 	// 根据时间范围类型显示不同的完成消息
-	var reportType string
-	switch {
-	case fromDate != "" && toDate != "":
-		reportType = "自定义时间范围报告"
-	case customDate != "":
-		reportType = "日报"
-	case timeRange == "day":
-		reportType = "日报"
-	case timeRange == "week":
-		reportType = "周报"
-	case timeRange == "month":
-		reportType = "月报"
-	case timeRange == "year":
-		reportType = "年报"
-	default:
-		reportType = "报告"
-	}
+	reportType := getReportTypeShort()
 
 	fmt.Printf("%s生成完成！\n", reportType)
+}
+
+// getReportTypeShort 获取报告类型的简短描述
+func getReportTypeShort() string {
+	switch {
+	case fromDate != "" && toDate != "":
+		return "自定义时间范围报告"
+	case customDate != "":
+		return "日报"
+	case timeRange == "day":
+		return "日报"
+	case timeRange == "week":
+		return "周报"
+	case timeRange == "month":
+		return "月报"
+	case timeRange == "year":
+		return "年报"
+	default:
+		return "报告"
+	}
 }
