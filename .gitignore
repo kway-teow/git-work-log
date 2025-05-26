@@ -43,3 +43,5 @@ Thumbs.db
 # 其他临时文件
 tmp/
 temp/
+
+node_modules
