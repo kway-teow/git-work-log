@@ -1,0 +1,73 @@
+# .goreleaser.yml 配置文件
+# 详细文档: https://goreleaser.com/
+
+before:
+  hooks:
+    # 在构建前运行测试，设置环境变量SKIP_GIT_TESTS=true跳过依赖git命令的测试
+    - SKIP_GIT_TESTS=true go test -v ./... || { echo "测试失败"; exit 1; }
+    # 确保依赖是最新的
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # 主要命令
+    main: ./cmd/git-work-log/main.go
+    # 二进制文件名模板
+    binary: git-work-log
+    # 构建标记
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+archives:
+  - format: tar.gz
+    # 仅对 darwin 和 linux 使用 tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    replacements:
+      darwin: macOS
+    files:
+      - README.md
+      - LICENSE
+      - prompts/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+brews:
+  - name: git-work-log
+    tap:
+      owner: kway-teow
+      name: homebrew-tap
+    folder: Formula
+    homepage: https://github.com/kway-teow/git-work-log
+    description: 一个基于Git提交记录自动生成报告的工具，使用Google Gemini AI进行智能总结
+    license: MIT
+    test: |
+      system "#{bin}/git-work-log --help"
+    install: |
+      bin.install "git-work-log"
+      prefix.install "prompts"
