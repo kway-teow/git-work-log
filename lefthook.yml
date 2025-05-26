@@ -56,13 +56,15 @@ commit-msg:
     # 检查提交消息格式
     validate-commit-message:
       run: |
-        MSG_FILE=$1
-        if [ ! -f "$MSG_FILE" ]; then
+        # 获取提交消息文件
+        COMMIT_MSG_FILE="{1}"
+        if [ ! -f "$COMMIT_MSG_FILE" ]; then
           echo "错误: 无法找到提交消息文件"
           exit 1
         fi
         
-        COMMIT_MSG=$(cat "$MSG_FILE")
+        # 读取提交消息
+        COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
         TYPES="feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert|wip"
         
         # 检查提交消息是否符合格式要求 (支持表情符号)
