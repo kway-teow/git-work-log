@@ -35,8 +35,8 @@ func TestGetPromptType(t *testing.T) {
 		{"基础提示词", "basic", BasicPrompt},
 		{"详细提示词", "detailed", DetailedPrompt},
 		{"针对性提示词", "targeted", TargetedPrompt},
-		{"未知类型", "unknown", BasicPrompt}, // 默认返回基础提示词
-		{"空字符串", "", BasicPrompt},       // 默认返回基础提示词
+		{"未知类型", "unknown", PromptType("unknown")}, // 作为自定义提示词路径
+		{"空字符串", "", PromptType("")},               // 作为自定义提示词路径
 	}
 
 	for _, test := range tests {
