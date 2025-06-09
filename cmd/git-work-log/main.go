@@ -144,7 +144,6 @@ func generateReport() {
 	switch {
 	case fromDate != "" && toDate != "":
 		// 使用自定义时间范围（从某天到某天）
-		fmt.Println("使用自定义时间范围（从某天到某天）")
 		// 解析指定的日期范围
 		from, err1 = time.Parse("2006-01-02", fromDate)
 		to, err2 = time.Parse("2006-01-02", toDate)
@@ -154,9 +153,9 @@ func generateReport() {
 		}
 		// 调整结束日期为当天结束
 		to = to.Add(24*time.Hour - time.Second)
+		fmt.Printf("使用自定义时间范围: %s 到 %s\n", fromDate, toDate)
 	case customDate != "":
 		// 使用指定日期
-		fmt.Println("使用指定日期")
 		// 解析指定的日期
 		specificDate, err := time.Parse("2006-01-02", customDate)
 		if err != nil {
@@ -166,10 +165,11 @@ func generateReport() {
 		// 设置为指定日期的0点到次日0点
 		from = time.Date(specificDate.Year(), specificDate.Month(), specificDate.Day(), 0, 0, 0, 0, specificDate.Location())
 		to = from.AddDate(0, 0, 1)
+		fmt.Printf("使用指定日期: %s\n", customDate)
 	default:
 		// 使用预定义的时间范围
-		fmt.Printf("使用预定义时间范围: %s\n", timeRange)
 		from, to = calculateTimeRange(timeRange)
+		fmt.Printf("使用预定义时间范围 %s: %s 到 %s\n", timeRange, from.Format("2006-01-02"), to.Format("2006-01-02 15:04"))
 	}
 
 	// 判断使用何种分析模式：单仓库还是多仓库
