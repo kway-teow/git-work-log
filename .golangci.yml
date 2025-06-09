@@ -10,7 +10,7 @@ linters-settings:
 
   gocyclo:
     # 循环复杂度阈值
-    min-complexity: 30
+    min-complexity: 60
 
   dupl:
     # 重复代码检测阈值

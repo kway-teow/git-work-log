@@ -54,6 +54,24 @@ func (g *Generator) generateTextReport(summary string, commits []git.CommitInfo,
 	fmt.Fprintf(g.Output, "%s (%s 至 %s)\n", reportType, fromDate.Format("2006-01-02"), toDate.Format("2006-01-02"))
 	fmt.Fprintln(g.Output, "==================================")
 	fmt.Fprintln(g.Output)
+
+	// 统计仓库信息
+	repoStats := make(map[string]int)
+	for _, commit := range commits {
+		if commit.RepoPath != "" {
+			repoStats[commit.RepoPath]++
+		}
+	}
+
+	// 如果有多个仓库，显示仓库统计
+	if len(repoStats) > 1 {
+		fmt.Fprintln(g.Output, "## 仓库统计")
+		for repo, count := range repoStats {
+			fmt.Fprintf(g.Output, "- %s: %d 条提交\n", repo, count)
+		}
+		fmt.Fprintln(g.Output)
+	}
+
 	fmt.Fprintln(g.Output, "## AI 总结")
 	fmt.Fprintln(g.Output, summary)
 	fmt.Fprintln(g.Output)
@@ -65,6 +83,11 @@ func (g *Generator) generateTextReport(summary string, commits []git.CommitInfo,
 		fmt.Fprintf(g.Output, "- 哈希值: %s\n", commit.Hash[:8])
 		fmt.Fprintf(g.Output, "- 作者: %s\n", commit.Author)
 		fmt.Fprintf(g.Output, "- 日期: %s\n", commit.Date.Format("2006-01-02 15:04:05"))
+
+		// 显示仓库信息（如果有多个仓库）
+		if len(repoStats) > 1 && commit.RepoPath != "" {
+			fmt.Fprintf(g.Output, "- 仓库: %s\n", commit.RepoPath)
+		}
 
 		// 显示分支信息
 		if len(commit.Branches) > 0 {
@@ -94,6 +117,24 @@ func (g *Generator) generateMarkdownReport(summary string, commits []git.CommitI
 		fromDate.Format("2006-01-02"),
 		toDate.Format("2006-01-02"))
 
+	// 统计仓库信息
+	repoStats := make(map[string]int)
+	for _, commit := range commits {
+		if commit.RepoPath != "" {
+			repoStats[commit.RepoPath]++
+		}
+	}
+
+	// 如果有多个仓库，显示仓库统计
+	if len(repoStats) > 1 {
+		fmt.Fprintln(g.Output, "## 仓库统计")
+		fmt.Fprintln(g.Output)
+		for repo, count := range repoStats {
+			fmt.Fprintf(g.Output, "- **%s**: %d 条提交\n", repo, count)
+		}
+		fmt.Fprintln(g.Output)
+	}
+
 	// 写入AI总结
 	fmt.Fprintln(g.Output, "## AI 总结")
 	fmt.Fprintln(g.Output, summary)
@@ -108,6 +149,11 @@ func (g *Generator) generateMarkdownReport(summary string, commits []git.CommitI
 		fmt.Fprintf(g.Output, "- **哈希值**: `%s`\n", commit.Hash[:8])
 		fmt.Fprintf(g.Output, "- **作者**: %s\n", commit.Author)
 		fmt.Fprintf(g.Output, "- **日期**: %s\n", commit.Date.Format("2006-01-02 15:04:05"))
+
+		// 显示仓库信息（如果有多个仓库）
+		if len(repoStats) > 1 && commit.RepoPath != "" {
+			fmt.Fprintf(g.Output, "- **仓库**: `%s`\n", commit.RepoPath)
+		}
 
 		// 显示分支信息
 		if len(commit.Branches) > 0 {

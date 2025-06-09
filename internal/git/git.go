@@ -2,7 +2,9 @@ package git
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -42,6 +44,7 @@ type CommitInfo struct {
 	Message      string
 	Branches     []string // 分支信息
 	ChangedFiles []string
+	RepoPath     string // 仓库路径，标识提交来自哪个仓库
 }
 
 // GetCommitsBetween 获取指定时间范围内的所有提交
@@ -249,4 +252,99 @@ func parseCommits(output string) ([]CommitInfo, error) {
 	}
 
 	return commits, nil
+}
+
+// DiscoverGitRepos 发现指定目录下的所有Git仓库
+func DiscoverGitRepos(rootPath string) ([]string, error) {
+	var repos []string
+
+	// 如果根路径为空，使用当前目录
+	if rootPath == "" {
+		rootPath = "."
+	}
+
+	// 获取绝对路径
+	absRootPath, err := filepath.Abs(rootPath)
+	if err != nil {
+		return nil, fmt.Errorf("无法获取绝对路径: %w", err)
+	}
+
+	// 定义要跳过的目录（常见的非Git仓库目录）
+	skipDirs := map[string]bool{
+		"node_modules":     true,
+		"vendor":           true,
+		".vscode":          true,
+		".idea":            true,
+		"target":           true,
+		"build":            true,
+		"dist":             true,
+		"out":              true,
+		"bin":              true,
+		"obj":              true,
+		".next":            true,
+		".nuxt":            true,
+		"coverage":         true,
+		".nyc_output":      true,
+		".pytest_cache":    true,
+		"__pycache__":      true,
+		".gradle":          true,
+		".mvn":             true,
+		"bower_components": true,
+		"jspm_packages":    true,
+		".tmp":             true,
+		"tmp":              true,
+		"temp":             true,
+		".cache":           true,
+		"logs":             true,
+		"*.log":            true,
+	}
+
+	fmt.Printf("正在扫描目录: %s\n", absRootPath)
+
+	// 遍历目录
+	err = filepath.Walk(absRootPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			// 忽略权限错误等，继续遍历
+			return nil
+		}
+
+		// 如果是目录
+		if info.IsDir() {
+			// 检查是否为.git目录
+			if info.Name() == ".git" {
+				repoPath := filepath.Dir(path)
+				repos = append(repos, repoPath)
+				fmt.Printf("  发现Git仓库: %s\n", repoPath)
+				// 跳过.git目录的子目录遍历
+				return filepath.SkipDir
+			}
+
+			// 跳过常见的非Git仓库目录
+			if skipDirs[info.Name()] {
+				return filepath.SkipDir
+			}
+
+			// 跳过隐藏目录（除了已知的如.git）
+			if strings.HasPrefix(info.Name(), ".") && info.Name() != ".git" {
+				// 允许一些常见的项目目录
+				allowedHiddenDirs := map[string]bool{
+					".github": true,
+					".vscode": false, // 已在skipDirs中
+					".idea":   false, // 已在skipDirs中
+				}
+				if !allowedHiddenDirs[info.Name()] {
+					return filepath.SkipDir
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("遍历目录失败: %w", err)
+	}
+
+	fmt.Printf("扫描完成，共发现 %d 个Git仓库\n", len(repos))
+	return repos, nil
 }

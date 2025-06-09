@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/kway-teow/git-work-log/internal/ai"
@@ -26,11 +27,12 @@ var (
 	outputFormat string
 	outputFile   string
 	repoPath     string // Git仓库路径
+	reposPath    string // 仓库目录路径，分析该目录下的所有Git仓库
 	modelName    string // Gemini模型名称
 	authorName   string // Git作者名称
 	timeRange    string // 时间范围类型：day(天)、week(周)、month(月)、year(年)
 	customDate   string // 指定具体日期 (YYYY-MM-DD 格式)
-	promptType   string // 提示词类型：basic(基础)、detailed(详细)、targeted(针对性)
+	promptType   string // 提示词类型：basic(基础)、detailed(详细)、targeted(针对性) 或自定义提示词文件路径 (如: kpi.md 或 /path/to/custom.txt)
 )
 
 // rootCmd 表示根命令
@@ -42,6 +44,7 @@ var rootCmd = &cobra.Command{
 
 它使用Google Gemini AI对提交记录进行智能总结，生成格式化的报告。
 支持多种时间范围：天(day)、周(week)、月(month)、年(year)或自定义日期。
+支持单个仓库分析(--repo)或目录下所有仓库分析(--repos)。
 默认生成本周的报告。`,
 	Run: func(_ *cobra.Command, _ []string) {
 		// 执行生成报告的操作
@@ -73,9 +76,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", "text", "报告格式 (text 或 markdown)")
 	rootCmd.PersistentFlags().StringVar(&outputFile, "output", "", "输出文件路径 (默认为标准输出)")
 	rootCmd.PersistentFlags().StringVar(&repoPath, "repo", "", "Git仓库路径 (默认为当前目录)")
+	rootCmd.PersistentFlags().StringVar(&reposPath, "repos", "", "仓库目录路径，分析该目录下的所有Git仓库")
 	rootCmd.PersistentFlags().StringVar(&modelName, "model", "", "Gemini模型名称 (默认为gemini-2.5-flash-preview-05-20)")
 	rootCmd.PersistentFlags().StringVar(&authorName, "author", "", "Git作者名称")
-	rootCmd.PersistentFlags().StringVar(&promptType, "prompt", "basic", "提示词类型 (basic=基础, detailed=详细, targeted=针对性)")
+	rootCmd.PersistentFlags().StringVar(&promptType, "prompt", "basic", "提示词类型 (basic=基础, detailed=详细, targeted=针对性) 或自定义提示词文件路径 (如: kpi.md 或 /path/to/custom.txt)")
 }
 
 func main() {
@@ -93,35 +97,25 @@ func calculateTimeRange(rangeType string) (time.Time, time.Time) {
 
 	switch rangeType {
 	case "day":
-		// 今天
+		// 今天（从今天0点到现在）
 		from = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		to = from.AddDate(0, 0, 1)
+		to = now
 	case "week":
-		// 本周（周一到周日）
-		weekday := now.Weekday()
-		if weekday == time.Sunday {
-			weekday = 7
-		}
-		from = now.AddDate(0, 0, -int(weekday)+1)
-		from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
-		to = from.AddDate(0, 0, 7)
+		// 过去7天（从7天前到现在）
+		from = now.AddDate(0, 0, -7)
+		to = now
 	case "month":
-		// 本月
-		from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-		to = from.AddDate(0, 1, 0)
+		// 过去30天（从30天前到现在）
+		from = now.AddDate(0, 0, -30)
+		to = now
 	case "year":
-		// 本年
-		from = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location())
-		to = time.Date(now.Year()+1, 1, 1, 0, 0, 0, 0, now.Location())
+		// 过去365天（从365天前到现在）
+		from = now.AddDate(0, 0, -365)
+		to = now
 	default:
-		// 默认使用周
-		weekday := now.Weekday()
-		if weekday == time.Sunday {
-			weekday = 7
-		}
-		from = now.AddDate(0, 0, -int(weekday)+1)
-		from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
-		to = from.AddDate(0, 0, 7)
+		// 默认使用过去7天
+		from = now.AddDate(0, 0, -7)
+		to = now
 	}
 
 	return from, to
@@ -178,33 +172,98 @@ func generateReport() {
 		from, to = calculateTimeRange(timeRange)
 	}
 
-	// 创建Git选项
-	gitOpts := git.NewGitOptions(repoPath)
+	// 判断使用何种分析模式：单仓库还是多仓库
+	var repoPaths []string
+	var discoveryErr error
 
-	// 如果命令行指定了作者名称，覆盖自动检测的用户名
 	switch {
-	case authorName != "":
-		gitOpts.Author = authorName
-		fmt.Printf("使用指定作者: %s\n", authorName)
-	case gitOpts.Author != "":
-		fmt.Printf("使用当前 Git 用户: %s\n", gitOpts.Author)
+	case reposPath != "":
+		// 多仓库模式：发现指定目录下的所有Git仓库
+		repoPaths, discoveryErr = git.DiscoverGitRepos(reposPath)
+		if discoveryErr != nil {
+			fmt.Printf("错误: 发现Git仓库失败: %v\n", discoveryErr)
+			return
+		}
+
+		if len(repoPaths) == 0 {
+			fmt.Printf("在目录 %s 下没有发现任何Git仓库\n", reposPath)
+			return
+		}
+	case repoPath != "":
+		// 单仓库模式：使用指定的仓库路径
+		repoPaths = []string{repoPath}
 	default:
-		fmt.Println("未指定作者，将获取所有提交")
+		// 默认模式：使用当前目录
+		repoPaths = []string{"."}
 	}
 
-	// 获取提交记录
-	commits, err := git.GetCommitsBetween(from, to, gitOpts)
-	if err != nil {
-		fmt.Printf("错误: 获取Git提交记录失败: %v\n", err)
+	// 收集所有仓库的提交记录
+	var allCommits []git.CommitInfo
+	repoCommitCounts := make(map[string]int)
+
+	fmt.Printf("\n处理 %d 个仓库:\n", len(repoPaths))
+
+	for _, currentRepoPath := range repoPaths {
+		fmt.Printf("正在分析仓库: %s\n", currentRepoPath)
+
+		// 创建Git选项
+		gitOpts := git.NewGitOptions(currentRepoPath)
+
+		// 如果命令行指定了作者名称，覆盖自动检测的用户名
+		if authorName != "" {
+			gitOpts.Author = authorName
+		}
+
+		// 获取提交记录
+		commits, commitErr := git.GetCommitsBetween(from, to, gitOpts)
+		if commitErr != nil {
+			fmt.Printf("  警告: 仓库 %s 获取Git提交记录失败: %v\n", currentRepoPath, commitErr)
+			continue
+		}
+
+		// 记录每个仓库的提交数量
+		repoCommitCounts[currentRepoPath] = len(commits)
+
+		// 为每个提交添加仓库信息
+		for i := range commits {
+			commits[i].RepoPath = currentRepoPath
+		}
+
+		// 合并到总的提交列表
+		allCommits = append(allCommits, commits...)
+
+		fmt.Printf("  找到 %d 条提交记录\n", len(commits))
+	}
+
+	// 显示汇总统计信息
+	fmt.Printf("\n=== 提交记录统计 ===\n")
+	totalCommits := 0
+	for repoPath, count := range repoCommitCounts {
+		// 显示相对路径，更清晰
+		displayPath := repoPath
+		if reposPath != "" {
+			if rel, err := filepath.Rel(reposPath, repoPath); err == nil {
+				displayPath = rel
+			}
+		}
+		fmt.Printf("  %s: %d 条提交\n", displayPath, count)
+		totalCommits += count
+	}
+	fmt.Printf("总计: %d 条提交\n\n", totalCommits)
+
+	if len(allCommits) == 0 {
+		fmt.Printf("指定时间范围 %s 到 %s 在所有仓库中都没有找到提交记录\n", from.Format("2006-01-02"), to.Format("2006-01-02"))
 		return
 	}
 
-	if len(commits) == 0 {
-		fmt.Printf("指定时间范围 %s 到 %s 没有找到提交记录\n", from.Format("2006-01-02"), to.Format("2006-01-02"))
-		return
+	// 显示作者信息
+	if authorName != "" {
+		fmt.Printf("筛选作者: %s\n", authorName)
+	} else {
+		fmt.Println("获取所有作者的提交")
 	}
 
-	fmt.Printf("找到 %d 条提交记录，正在生成报告...\n", len(commits))
+	fmt.Printf("正在生成报告...\n")
 
 	// 使用AI生成报告
 	fmt.Println("使用AI生成摘要...")
@@ -220,24 +279,25 @@ func generateReport() {
 	defer geminiClient.Close()
 
 	// 根据选择的提示词类型确定使用哪种提示词
-	var aiPromptType ai.PromptType
-	switch promptType {
-	case "basic":
-		aiPromptType = ai.BasicPrompt
-		fmt.Println("使用基础提示词生成报告")
-	case "detailed":
-		aiPromptType = ai.DetailedPrompt
-		fmt.Println("使用详细提示词生成报告")
-	case "targeted":
-		aiPromptType = ai.TargetedPrompt
-		fmt.Println("使用针对性提示词生成报告")
-	default:
-		aiPromptType = ai.BasicPrompt
-		fmt.Println("使用默认基础提示词生成报告")
+	aiPromptType := ai.GetPromptTypeFromString(promptType)
+
+	if ai.IsCustomPrompt(aiPromptType) {
+		fmt.Printf("使用自定义提示词文件: %s\n", promptType)
+	} else {
+		switch aiPromptType {
+		case ai.BasicPrompt:
+			fmt.Println("使用基础提示词生成报告")
+		case ai.DetailedPrompt:
+			fmt.Println("使用详细提示词生成报告")
+		case ai.TargetedPrompt:
+			fmt.Println("使用针对性提示词生成报告")
+		default:
+			fmt.Println("使用默认基础提示词生成报告")
+		}
 	}
 
 	// 使用AI生成报告
-	reportSummary, err := geminiClient.SummarizeCommitsWithPrompt(commits, aiPromptType)
+	reportSummary, err := geminiClient.SummarizeCommitsWithPrompt(allCommits, aiPromptType)
 	if err != nil {
 		fmt.Printf("错误: 生成报告摘要失败: %v\n", err)
 		return
@@ -260,7 +320,7 @@ func generateReport() {
 	reportGenerator := report.NewGenerator(reportFormat, output)
 
 	// 生成并输出报告
-	err = reportGenerator.GenerateReport(reportSummary, commits, from, to)
+	err = reportGenerator.GenerateReport(reportSummary, allCommits, from, to)
 	if err != nil {
 		fmt.Printf("错误: 输出报告失败: %v\n", err)
 		return

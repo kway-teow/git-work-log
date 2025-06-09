@@ -229,7 +229,24 @@ const defaultPromptTemplate = `你是一位专业的工作报告生成助手。�
 
 // loadPromptTemplate 从文件加载提示词模板
 func loadPromptTemplate(promptType PromptType) (string, error) {
-	// 根据提示词类型确定文件名
+	// 检查是否为自定义提示词
+	if IsCustomPrompt(promptType) {
+		// 自定义提示词，从文件加载
+		customPrompt, err := LoadCustomPrompt(string(promptType))
+		if err != nil {
+			return "", fmt.Errorf("加载自定义提示词失败: %w", err)
+		}
+
+		// 确保自定义提示词包含占位符
+		if !strings.Contains(customPrompt, "{{.CommitMessages}}") {
+			// 如果没有占位符，在末尾添加
+			customPrompt += "\n\n提交记录：\n{{.CommitMessages}}"
+		}
+
+		return customPrompt, nil
+	}
+
+	// 预设提示词，根据提示词类型确定文件名
 	var filename string
 	switch promptType {
 	case BasicPrompt:

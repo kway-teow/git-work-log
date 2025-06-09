@@ -1,5 +1,12 @@
 package ai
 
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
 // PromptType 表示不同类型的提示词
 type PromptType string
 
@@ -22,6 +29,50 @@ func GetPromptTypeFromString(promptTypeStr string) PromptType {
 	case string(TargetedPrompt):
 		return TargetedPrompt
 	default:
-		return BasicPrompt // 默认返回基础提示词
+		// 如果不是预设类型，返回作为自定义类型（文件路径）
+		return PromptType(promptTypeStr)
 	}
+}
+
+// IsCustomPrompt 检查是否为自定义提示词（文件路径）
+func IsCustomPrompt(promptType PromptType) bool {
+	return promptType != BasicPrompt &&
+		promptType != DetailedPrompt &&
+		promptType != TargetedPrompt
+}
+
+// LoadCustomPrompt 加载自定义提示词文件
+func LoadCustomPrompt(filePath string) (string, error) {
+	// 检查文件是否存在
+	if !filepath.IsAbs(filePath) {
+		// 如果是相对路径，转换为绝对路径
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("获取当前目录失败: %w", err)
+		}
+		filePath = filepath.Join(cwd, filePath)
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("自定义提示词文件不存在: %s", filePath)
+	}
+
+	// 读取文件内容
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("读取自定义提示词文件失败: %w", err)
+	}
+
+	promptContent := strings.TrimSpace(string(content))
+	if promptContent == "" {
+		return "", fmt.Errorf("自定义提示词文件为空: %s", filePath)
+	}
+
+	// 确保提示词末尾有一个换行符，以便后续添加提交记录
+	if !strings.HasSuffix(promptContent, "\n") {
+		promptContent += "\n"
+	}
+
+	return promptContent, nil
 }

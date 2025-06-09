@@ -45,3 +45,5 @@ tmp/
 temp/
 
 node_modules
+
+mock/
